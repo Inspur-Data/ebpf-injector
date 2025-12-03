@@ -1,4 +1,4 @@
-name: Build eBPF with Bumblebee and Push
+name: Build eBPF with Bumblebee and Push (Final)
 
 on:
   push:
@@ -24,33 +24,30 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Download Bumblebee (bee)
-        uses: robinraju/release-downloader@v1.8
-        with:
-          repository: "solo-io/bumblebee"
-          version: ${{ env.BEE_VERSION }}
-          # 下载与Runner匹配的amd64二进制文件
-          fileName: "bee_linux_amd64"
-          # 赋予可执行权限
-          executable: true
-          # 将其移动到/usr/local/bin，方便直接调用
-          out-file-path: "/usr/local/bin/bee"
+      - name: 2. Download and install Bumblebee (bee) manually
+        # 【核心修正】放弃第三方Action，使用最基础的curl和install命令
+        run: |
+          set -e
+          set -x
+          # 构造下载URL
+          BEE_URL="https://github.com/solo-io/bumblebee/releases/download/${BEE_VERSION}/bee_linux_amd64"
+          # 使用curl下载
+          curl -L -o bee_linux_amd64 "${BEE_URL}"
+          # 使用install命令，将文件移动到/usr/local/bin并赋予可执行权限
+          sudo install -m 755 bee_linux_amd64 /usr/local/bin/bee
+          # 清理下载的文件
+          rm bee_linux_amd64
 
       - name: 3. Verify bee installation
         run: bee version
 
       - name: 4. Build eBPF program using bee
-        # 【核心】bee build命令会自动处理所有clang参数和头文件问题
         run: bee build bpf_program.c loader.c
-        # bee build命令会生成两个文件:
-        # - bpf_program.o  (eBPF字节码)
-        # - loader         (用户态加载器)
 
       - name: 5. Verify build artifacts
         run: ls -la bpf_program.o loader
       
-      # ---- 后续的Docker打包和推送步骤 ----
-      # 我们将使用一个全新的、极简的Dockerfile，名为bee.Dockerfile
+      # ---- 后续的Docker打包和推送步骤 (保持不变) ----
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -74,7 +71,6 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          # 使用全新的、为bee产物设计的Dockerfile
           file: ./bee.Dockerfile
           platforms: linux/amd64
           push: true
