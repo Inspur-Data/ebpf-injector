@@ -1,21 +1,34 @@
-FROM golang:1.20-alpine as builder
+# ---- Build Stage ----
+FROM ubuntu:22.04 AS builder
 
-COPY . /usr/src/ib-sriov-cni
+RUN apt-get update && \
+    apt-get install -y clang libelf-dev libbpf-dev linux-tools-common linux-tools-generic build-essential git
 
-ENV HTTP_PROXY $http_proxy
-ENV HTTPS_PROXY $https_proxy
+WORKDIR /src
+RUN git clone https://github.com/libbpf/libbpf-bootstrap.git /libbpf-bootstrap
+WORKDIR /libbpf-bootstrap
+RUN git submodule update --init --recursive
+RUN make -C src/bpftool
 
-RUN apk add --no-cache --virtual build-dependencies build-base=~0.5 linux-headers=~6.3
-WORKDIR /usr/src/ib-sriov-cni
-RUN make clean && \
-    make build
+COPY bpf_program.c /src/
+COPY loader.c /src/
 
-FROM alpine:3.18.2
-COPY --from=builder /usr/src/ib-sriov-cni/build/ib-sriov /usr/bin/
+WORKDIR /src
+RUN clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o \
+    -I/libbpf-bootstrap/libbpf/src/
+
+RUN /libbpf-bootstrap/src/bpftool/bpftool gen skeleton bpf_program.o > bpf_program.skel.h
+
+RUN gcc -g -Wall loader.c -o loader \
+    -I/libbpf-bootstrap/libbpf/src/ \
+    -L/libbpf-bootstrap/libbpf/src/ -lbpf
+
+# ---- Final Stage ----
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y libbpf-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /
+COPY --from=builder /src/loader .
 
-LABEL io.k8s.display-name="InfiniBand SR-IOV CNI"
-
-COPY ./images/entrypoint.sh /
-
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/loader"]
