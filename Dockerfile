@@ -27,7 +27,10 @@ COPY bpf_program.c /tmp/libbpf-bootstrap/src/
 COPY bpf_helpers.h /tmp/libbpf-bootstrap/src/
 COPY loader.c /tmp/libbpf-bootstrap/src/
 
-# Update the vmlinux.h path in the Makefile
+# 生成 vmlinux.h（必须有 bpftool）
+RUN ln -sf /usr/sbin/bpftool /usr/bin/bpftool
+RUN bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/vmlinux.h
+
 WORKDIR /tmp/libbpf-bootstrap/src
 
 # Compile eBPF program directly with all needed headers
@@ -61,3 +64,4 @@ WORKDIR /
 COPY --from=builder /tmp/libbpf-bootstrap/src/loader .
 
 ENTRYPOINT ["/loader"]
+
