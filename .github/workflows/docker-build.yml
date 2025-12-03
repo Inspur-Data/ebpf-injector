@@ -1,40 +1,82 @@
-name: Final eBPF Build
+name: Build eBPF with Bumblebee and Push
 
-on: [workflow_dispatch]
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  IMAGE_NAMESPACE: ebpf-injector
+  IMAGE_NAME: ebpf-injector
+  BEE_VERSION: v0.3.1
 
 jobs:
-  build:
-    name: Build eBPF and Loader
+  build-and-push:
+    name: Build and Push with Bumblebee
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev build-essential gcc
+      - name: 2. Download Bumblebee (bee)
+        uses: robinraju/release-downloader@v1.8
+        with:
+          repository: "solo-io/bumblebee"
+          version: ${{ env.BEE_VERSION }}
+          # 下载与Runner匹配的amd64二进制文件
+          fileName: "bee_linux_amd64"
+          # 赋予可执行权限
+          executable: true
+          # 将其移动到/usr/local/bin，方便直接调用
+          out-file-path: "/usr/local/bin/bee"
 
-      - name: 3. Compile eBPF program
-        run: |
-          echo "--- Starting final eBPF compilation ---"
-          
-          # 最终的、最简单的clang命令
-          clang \
-            -O2 -g -Wall \
-            -target bpf \
-            \
-            # 【终极核心修正】
-            # -I.  告诉clang，把当前目录('.')也作为头文件搜索路径
-            # 这样，当代码中 #include <bpf/bpf_helpers.h> 时，
-            # 它会去寻找 ./bpf/bpf_helpers.h
-            # 或者，我们可以直接修改C代码
-            -I. \
-            \
-            -c bpf_program.c \
-            -o bpf_program.o
+      - name: 3. Verify bee installation
+        run: bee version
 
-      - name: 4. Compile loader
-        run: gcc -g -Wall loader.c -o loader -lbpf
+      - name: 4. Build eBPF program using bee
+        # 【核心】bee build命令会自动处理所有clang参数和头文件问题
+        run: bee build bpf_program.c loader.c
+        # bee build命令会生成两个文件:
+        # - bpf_program.o  (eBPF字节码)
+        # - loader         (用户态加载器)
 
-      - name: 5. Verify artifacts
-        run: ls -la loader bpf_program.o
+      - name: 5. Verify build artifacts
+        run: ls -la bpf_program.o loader
+      
+      # ---- 后续的Docker打包和推送步骤 ----
+      # 我们将使用一个全新的、极简的Dockerfile，名为bee.Dockerfile
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.USERNAME_ALI }}
+          password: ${{ secrets.PASSWORD_ALI }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch,prefix=
+            type=semver,pattern={{version}}
+      - name: Build and push final image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          # 使用全新的、为bee产物设计的Dockerfile
+          file: ./bee.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
