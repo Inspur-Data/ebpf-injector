@@ -1,4 +1,4 @@
-name: Build eBPF with Bumblebee and Push (API Fetch)
+name: Build eBPF with Bumblebee and Push (Final RAW Download)
 
 on:
   push:
@@ -24,40 +24,40 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Download Bumblebee Asset via GitHub API
-        # 【核心修正】使用经过验证的、通过API下载的Action
-        uses: jcbhmr/fetch-release-asset@v1
-        with:
-          # 仓库所有者和名称
-          owner: solo-io
-          repo: bumblebee
-          # Git Tag
-          tag: ${{ env.BEE_VERSION }}
-          # 准确的资产文件名
-          file: bee-linux-amd64.tar.gz
-          # 将下载的文件保存为...
-          target: ./bee-linux-amd64.tar.gz
-
-      - name: 3. Extract and Install Bumblebee
+      - name: 2. Download, Extract and Install Bumblebee (RAW)
         run: |
           set -e
           set -x
+          
+          # 【核心修正】我们不再拼接URL，而是直接让curl处理重定向
+          # -J: 告诉curl使用服务器提供的Content-Disposition文件名
+          # -O: 将文件保存为服务器建议的名称
+          curl -sSL -o bee-linux-amd64.tar.gz https://github.com/solo-io/bumblebee/releases/download/v0.3.1/bee-linux-amd64.tar.gz
+
           echo "--- Verifying downloaded file ---"
           file bee-linux-amd64.tar.gz
           
+          # 如果下载的不是gzip文件，则主动失败
+          if ! file bee-linux-amd64.tar.gz | grep -q "gzip compressed data"; then
+            echo "Error: Downloaded file is NOT a gzip archive!"
+            # 打印文件内容以供诊断
+            cat bee-linux-amd64.tar.gz
+            exit 1
+          fi
+
           echo "--- Extracting tarball ---"
           tar -xzf bee-linux-amd64.tar.gz
           
           echo "--- Installing bee binary ---"
           sudo install -m 755 bee /usr/local/bin/bee
 
-      - name: 4. Verify bee installation
+      - name: 3. Verify bee installation
         run: bee version
 
-      - name: 5. Build eBPF program using bee
+      - name: 4. Build eBPF program using bee
         run: bee build bpf_program.c loader.c
 
-      - name: 6. Verify build artifacts
+      - name: 5. Verify build artifacts
         run: ls -la bpf_program.o loader
       
       # ---- 后续的Docker打包和推送步骤 (保持不变) ----
