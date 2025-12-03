@@ -6,6 +6,15 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential clang llvm libelf-dev libbpf-dev gcc-multilib git make
 
+RUN apt-get update && apt-get install -y \
+    clang \
+    llvm \
+    libbpf-dev \
+    linux-headers-generic \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*    
+
+
 # 2. 拷贝所有源代码
 WORKDIR /src
 COPY . .
@@ -16,8 +25,11 @@ RUN make && make install
 
 # 4. 编译我们的eBPF程序
 WORKDIR /src
+
+
 # 【核心修正】使用绝对路径 /usr/bin/clang 来调用编译器
-RUN /usr/bin/clang \
+RUN set -x && \
+    /usr/bin/clang \
     -I /usr/include/bpf \
     -I /usr/include/x86_64-linux-gnu \
     -O2 -g -target bpf \

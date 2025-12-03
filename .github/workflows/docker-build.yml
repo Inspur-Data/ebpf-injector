@@ -36,8 +36,31 @@ jobs:
           ref: v1.2.0
           # 【核心】直接将libbpf克隆到主项目下的一个名为'libbpf'的子目录
           path: libbpf
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+          clang \
+          llvm \
+          libbpf-dev \
+          linux-headers-$(uname -r) \
+          build-essential
       
-        
+      - name: Compile eBPF program
+        run: |
+          clang \
+          -I /usr/include/bpf \
+          -I /usr/include/x86_64-linux-gnu \
+          -I /usr/src/linux-headers-$(uname -r)/include \
+          -I /usr/src/linux-headers-$(uname -r)/arch/x86/include \
+          -O2 -g \
+          -target bpf \
+          -D__KERNEL__ \
+          -D__TARGET_ARCH_x86 \
+          -c bpf_program.c \
+          -o bpf_program.o    
+
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
