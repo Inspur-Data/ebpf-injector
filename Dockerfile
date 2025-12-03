@@ -18,8 +18,8 @@ RUN make && make install
 WORKDIR /src
 # 【核心修正】使用绝对路径 /usr/bin/clang 来调用编译器
 RUN /usr/bin/clang \
-    -I/usr/include/bpf \
-    -I/usr/include/x86_64-linux-gnu \
+    -I /usr/include/bpf \
+    -I /usr/include/x86_64-linux-gnu \
     -O2 -g -target bpf \
     -c bpf_program.c \
     -o bpf_program.o
