@@ -1,4 +1,4 @@
-name: Build eBPF with Bumblebee and Push (Final)
+name: Ultimate Debug and Build with Bumblebee
 
 on:
   push:
@@ -24,19 +24,38 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Download and install Bumblebee (bee) manually
-        # 【核心修正】放弃第三方Action，使用最基础的curl和install命令
+      - name: 2. Download and Diagnose Bumblebee (bee)
         run: |
           set -e
           set -x
+          
           # 构造下载URL
           BEE_URL="https://github.com/solo-io/bumblebee/releases/download/${BEE_VERSION}/bee_linux_amd64"
-          # 使用curl下载
-          curl -L -o bee_linux_amd64 "${BEE_URL}"
-          # 使用install命令，将文件移动到/usr/local/bin并赋予可执行权限
-          sudo install -m 755 bee_linux_amd64 /usr/local/bin/bee
-          # 清理下载的文件
-          rm bee_linux_amd64
+          echo "--- Downloading from URL: ${BEE_URL} ---"
+          
+          # 使用curl下载，-v 参数会打印详细的网络交互过程
+          curl -v -L -o bee_linux_amd64 "${BEE_URL}"
+          
+          echo ""
+          echo "--- DIAGNOSING DOWNLOADED FILE ---"
+          # 1. 打印文件类型
+          echo "File type:"
+          file bee_linux_amd64
+          
+          # 2. 打印文件的前10行内容
+          echo "First 10 lines of the file:"
+          head -n 10 bee_linux_amd64
+          echo "--- END OF DIAGNOSIS ---"
+          
+          # 只有当文件是可执行二进制文件时，才继续
+          if file bee_linux_amd64 | grep -q "ELF 64-bit LSB executable"; then
+            echo "File is a valid executable. Proceeding with installation."
+            sudo install -m 755 bee_linux_amd64 /usr/local/bin/bee
+            rm bee_linux_amd64
+          else
+            echo "Error: Downloaded file is not a valid executable!"
+            exit 1
+          fi
 
       - name: 3. Verify bee installation
         run: bee version
@@ -66,7 +85,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch,prefix=
-            type=semver,pattern={{version}}
       - name: Build and push final image
         uses: docker/build-push-action@v4
         with:
