@@ -16,9 +16,9 @@ WORKDIR /src
 COPY bpf_program.c .
 COPY loader.c .
 
-# 3. 编译eBPF程序
-# 这个命令现在没有任何外部的-I头文件路径依赖
-RUN clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o
+# 3. 编译eBPF程序，并捕获详细错误日志
+# 如果编译失败，Action会中止，并打印出clang_error.log的内容
+RUN (clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o 2>&1 | tee clang_error.log; if [ ${PIPESTATUS[0]} -ne 0 ]; then cat clang_error.log; exit 1; fi)
 
 # 4. 编译用户态加载器
 RUN gcc -g -Wall loader.c -o loader -lbpf
@@ -37,6 +37,3 @@ COPY --from=builder /src/bpf_program.o .
 
 # 设置默认入口点
 ENTRYPOINT ["/loader"]
-
-
-
