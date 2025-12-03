@@ -1,51 +1,40 @@
-name: Ultimate Diagnostic Workflow
+name: Final eBPF Build
 
 on: [workflow_dispatch]
 
 jobs:
-  diagnose-filesystem:
-    name: Diagnose Runner Filesystem
+  build:
+    name: Build eBPF and Loader
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤1：只做一件事，检出代码
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      # 步骤2：不做任何其他事，只进行诊断
-      - name: 2. Run Diagnostics
-        run: |
-          echo "--- Running diagnostics ---"
-          
-          echo ""
-          echo "================================================="
-          echo "||         VARIABLES & ENVIRONMENT           ||"
-          echo "================================================="
-          echo "1. whoami: $(whoami)"
-          echo "2. pwd (current directory): $(pwd)"
-          echo "3. GITHUB_WORKSPACE variable: ${{ github.workspace }}"
-          echo "4. RUNNER_WORKSPACE variable: ${{ runner.workspace }}"
-          
-          echo ""
-          echo "================================================="
-          echo "||          FILE SYSTEM LISTING              ||"
-          echo "================================================="
-          echo ""
-          echo "--- Listing files in current directory (pwd): ---"
-          ls -la
-          
-          echo ""
-          echo "--- Listing files in GITHUB_WORKSPACE (${{ github.workspace }}): ---"
-          ls -la ${{ github.workspace }}
-          
-          echo ""
-          echo "--- Recursive listing from current directory: ---"
-          # -R: 递归地列出所有子目录和文件
-          # This will show us everything, everywhere.
-          ls -laR
-          
-          echo ""
-          echo "================================================="
-          echo "||             END OF DIAGNOSTICS            ||"
-          echo "================================================="
+      - name: 2. Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev build-essential gcc
 
+      - name: 3. Compile eBPF program
+        run: |
+          echo "--- Starting final eBPF compilation ---"
+          
+          # 最终的、最简单的clang命令
+          clang \
+            -O2 -g -Wall \
+            -target bpf \
+            \
+            # 【终极核心修正】
+            # -I.  告诉clang，把当前目录('.')也作为头文件搜索路径
+            # 这样，当代码中 #include <bpf/bpf_helpers.h> 时，
+            # 它会去寻找 ./bpf/bpf_helpers.h
+            # 或者，我们可以直接修改C代码
+            -I. \
+            \
+            -c bpf_program.c \
+            -o bpf_program.o
+
+      - name: 4. Compile loader
+        run: gcc -g -Wall loader.c -o loader -lbpf
+
+      - name: 5. Verify artifacts
+        run: ls -la loader bpf_program.o
