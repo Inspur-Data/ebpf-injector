@@ -26,9 +26,18 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - name: Checkout main repository
+        uses: actions/checkout@v3
+      
+      - name: Checkout libbpf repository into main repo
+        uses: actions/checkout@v3
+        with:
+          repository: libbpf/libbpf
+          ref: v1.2.0
+          # 【核心】直接将libbpf克隆到主项目下的一个名为'libbpf'的子目录
+          path: libbpf
+      
+        
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -55,7 +64,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push multi-arch image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v4
         with:
           context: .
           file: ./Dockerfile
