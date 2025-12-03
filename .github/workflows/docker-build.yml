@@ -28,38 +28,43 @@ jobs:
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v3
-      
-      - name: Checkout libbpf repository into main repo
-        uses: actions/checkout@v3
-        with:
-          repository: libbpf/libbpf
-          ref: v1.2.0
-          # 【核心】直接将libbpf克隆到主项目下的一个名为'libbpf'的子目录
-          path: libbpf
-      - name: Set up environment
+
+      # 【不再需要】我们不再需要单独克隆libbpf，因为dev包提供了我们需要的一切
+      # - name: Checkout libbpf repository into main repo ...
+
+      - name: Set up build environment
         run: |
           sudo apt-get update
+          # 安装所有必要的工具和头文件
           sudo apt-get install -y \
-          clang \
-          llvm \
-          libbpf-dev \
-          linux-headers-$(uname -r) \
-          build-essential
-      
-      # - name: Compile eBPF program
-      #   run: |
-      #     clang \
-      #     -I /usr/include/bpf \
-      #     -I /usr/include/x86_64-linux-gnu \
-      #     -I /usr/src/linux-headers-$(uname -r)/include \
-      #     -I /usr/src/linux-headers-$(uname -r)/arch/x86/include \
-      #     -O2 -g \
-      #     -target bpf \
-      #     -D__KERNEL__ \
-      #     -D__TARGET_ARCH_x86 \
-      #     -c bpf_program.c \
-      #     -o bpf_program.o    
+          clang llvm libbpf-dev linux-headers-$(uname -r) build-essential gcc
 
+      - name: Compile eBPF program
+        # 【核心修正】这是最后、最关键的一步
+        run: |
+          # 我们不再自己拼凑-I参数，而是告诉clang像构建内核模块一样工作
+          # 这会自动包含所有必需的头文件和宏定义
+          clang \
+          -O2 -g -Wall \
+          -target bpf \
+          -D__KERNEL__ \
+          -D__TARGET_ARCH_x86 \
+          # 使用-I包含已安装的内核头文件的主目录
+          -I/usr/src/linux-headers-$(uname -r)/include \
+          -I/usr/src/linux-headers-$(uname -r)/include/uapi \
+          -I/usr/src/linux-headers-$(uname -r)/arch/x86/include \
+          -I/usr/src/linux-headers-$(uname -r)/arch/x86/include/uapi \
+          # 告诉clang不要包含标准的C库头文件，因为我们在“内核”环境
+          -nostdinc \
+          # 包含clang自身的资源头文件，以获取内置函数和类型
+          -isystem /usr/lib/clang/$(clang -dumpversion)/include \
+          -c bpf_program.c \
+          -o bpf_program.o
+
+      - name: Compile loader application
+        run: gcc -g -Wall loader.c -o loader -lbpf
+      
+      # ---- 后续的Docker打包和推送步骤 ----
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -86,14 +91,13 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push multi-arch image
+      - name: Build and push final image
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./Dockerfile
+          # 【重要】我们现在使用一个新的、极简的Dockerfile
+          file: ./final.Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
