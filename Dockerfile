@@ -27,13 +27,13 @@ COPY bpf_program.c /tmp/libbpf-bootstrap/src/
 COPY bpf_helpers.h /tmp/libbpf-bootstrap/src/
 COPY loader.c /tmp/libbpf-bootstrap/src/
 
-# 生成 vmlinux.h（必须有 bpftool）
+# Generate vmlinux.h
 RUN ln -sf /usr/sbin/bpftool /usr/bin/bpftool
 RUN bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/vmlinux.h
 
 WORKDIR /tmp/libbpf-bootstrap/src
 
-# Compile eBPF program directly with all needed headers
+# Compile eBPF program with all needed headers
 RUN clang -O2 -g -target bpf \
     -I/tmp/libbpf-bootstrap/libbpf/src/uapi \
     -I/tmp/libbpf-bootstrap/libbpf/src \
@@ -64,4 +64,3 @@ WORKDIR /
 COPY --from=builder /tmp/libbpf-bootstrap/src/loader .
 
 ENTRYPOINT ["/loader"]
-
