@@ -58,3 +58,5 @@ jobs:
           echo ""
           echo "--- Final artifacts: ---"
           ls -la loader bpf_program.o
+
+          
