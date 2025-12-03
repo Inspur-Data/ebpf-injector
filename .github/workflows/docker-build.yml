@@ -1,71 +1,51 @@
-name: Debug eBPF Compilation
+name: Ultimate Diagnostic Workflow
 
-# 只允许手动触发，以进行精确的诊断
 on: [workflow_dispatch]
 
 jobs:
-  debug-compile:
-    name: Debug Compilation in CI Runner
+  diagnose-filesystem:
+    name: Diagnose Runner Filesystem
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤1：检出您的项目代码
+      # 步骤1：只做一件事，检出代码
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      # 步骤2：安装所有必要的编译依赖
-      # clang, llvm: 编译器
-      # libbpf-dev: 提供 bpf/bpf_helpers.h 等头文件
-      # linux-headers-$(uname -r): 提供 linux/types.h 等头文件，以解决 __u64 未定义问题
-      # build-essential, gcc: 用于编译用户态加载器
-      - name: 2. Install Dependencies
+      # 步骤2：不做任何其他事，只进行诊断
+      - name: 2. Run Diagnostics
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev linux-headers-$(uname -r) build-essential gcc
-
-      # 步骤3：编译eBPF程序，使用最精简、最直接的clang命令
-      - name: 3. Compile eBPF program (Simple & Correct)
-        run: |
-          # --- 诊断信息，确认我们处于正确的目录 ---
-          echo "================ DIAGNOSTICS ================"
-          echo "Current Directory (pwd): $(pwd)"
-          echo "--- Listing files: ---"
+          echo "--- Running diagnostics ---"
+          
+          echo ""
+          echo "================================================="
+          echo "||         VARIABLES & ENVIRONMENT           ||"
+          echo "================================================="
+          echo "1. whoami: $(whoami)"
+          echo "2. pwd (current directory): $(pwd)"
+          echo "3. GITHUB_WORKSPACE variable: ${{ github.workspace }}"
+          echo "4. RUNNER_WORKSPACE variable: ${{ runner.workspace }}"
+          
+          echo ""
+          echo "================================================="
+          echo "||          FILE SYSTEM LISTING              ||"
+          echo "================================================="
+          echo ""
+          echo "--- Listing files in current directory (pwd): ---"
           ls -la
-          echo "==============================================="
           
-          # --- 【最终核心编译命令】 ---
           echo ""
-          echo "--- Starting eBPF compilation (Simple & Correct) ---"
+          echo "--- Listing files in GITHUB_WORKSPACE (${{ github.workspace }}): ---"
+          ls -la ${{ github.workspace }}
           
-          clang \
-            -O2 -g -Wall \
-            -target bpf \
-            \
-            # 关键修正1: 明确告诉clang去哪里找 bpf/bpf_helpers.h
-            -I/usr/include/bpf \
-            \
-            # 关键修正2: 明确告诉clang去哪里找内核基础类型定义 (如 __u64)
-            -I/usr/src/linux-headers-$(uname -r)/include \
-            \
-            -c bpf_program.c \
-            -o bpf_program.o
+          echo ""
+          echo "--- Recursive listing from current directory: ---"
+          # -R: 递归地列出所有子目录和文件
+          # This will show us everything, everywhere.
+          ls -laR
+          
+          echo ""
+          echo "================================================="
+          echo "||             END OF DIAGNOSTICS            ||"
+          echo "================================================="
 
-          echo "--- eBPF compilation finished. Exit code: $? ---"
-          
-      # 步骤4：编译用户态加载器
-      - name: 4. Compile loader application
-        run: |
-          echo ""
-          echo "--- Starting loader compilation ---"
-          
-          gcc -g -Wall loader.c -o loader -lbpf
-          
-          echo "--- Loader compilation finished. Exit code: $? ---"
-
-      # 步骤5：验证产物
-      # 这一步是为了确保编译确实成功生成了我们想要的文件
-      - name: 5. Verify build artifacts
-        run: |
-          echo ""
-          echo "--- Final artifacts: ---"
-          ls -la loader bpf_program.o
