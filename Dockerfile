@@ -1,12 +1,12 @@
 # ---- Build Stage ----
 FROM ubuntu:22.04 as builder
 
-# 1. 安装编译依赖 (不再需要git)
+# 1. 安装编译依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    build-essential clang llvm libelf-dev libbpf-dev gcc-multilib make
+    build-essential clang llvm libelf-dev libbpf-dev gcc-multilib git make
 
-# 2. 拷贝所有源代码 (包括我们通过CI下载的libbpf)
+# 2. 拷贝所有源代码
 WORKDIR /src
 COPY . .
 
@@ -16,7 +16,8 @@ RUN make && make install
 
 # 4. 编译我们的eBPF程序
 WORKDIR /src
-RUN clang \
+# 【核心修正】使用绝对路径 /usr/bin/clang 来调用编译器
+RUN /usr/bin/clang \
     -I/usr/include/bpf \
     -I/usr/include/x86_64-linux-gnu \
     -O2 -g -target bpf \
@@ -24,7 +25,8 @@ RUN clang \
     -o bpf_program.o
 
 # 5. 编译用户态加载器
-RUN gcc -g -Wall loader.c -o loader -lbpf
+# 【核心修正】使用绝对路径 /usr/bin/gcc 来调用编译器
+RUN /usr/bin/gcc -g -Wall loader.c -o loader -lbpf
 
 # ---- Final Stage ----
 FROM ubuntu:22.04
