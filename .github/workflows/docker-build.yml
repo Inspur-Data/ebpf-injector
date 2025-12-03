@@ -1,4 +1,4 @@
-name: Ultimate Debug and Build with Bumblebee
+name: Build eBPF with Bumblebee and Push (Final Corrected)
 
 on:
   push:
@@ -24,38 +24,32 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Download and Diagnose Bumblebee (bee)
+      - name: 2. Download, Extract and Install Bumblebee (bee)
         run: |
           set -e
           set -x
           
-          # 构造下载URL
-          BEE_URL="https://github.com/solo-io/bumblebee/releases/download/${BEE_VERSION}/bee_linux_amd64"
-          echo "--- Downloading from URL: ${BEE_URL} ---"
+          # 【核心修正】使用正确的资产名称 bee-linux-amd64.tar.gz
+          ASSET_NAME="bee-linux-amd64.tar.gz"
+          BEE_URL="https://github.com/solo-io/bumblebee/releases/download/${BEE_VERSION}/${ASSET_NAME}"
           
-          # 使用curl下载，-v 参数会打印详细的网络交互过程
-          curl -v -L -o bee_linux_amd64 "${BEE_URL}"
+          echo "--- Downloading from correct URL: ${BEE_URL} ---"
+          curl -L -o "${ASSET_NAME}" "${BEE_URL}"
           
-          echo ""
-          echo "--- DIAGNOSING DOWNLOADED FILE ---"
-          # 1. 打印文件类型
-          echo "File type:"
-          file bee_linux_amd64
+          echo "--- Verifying downloaded file ---"
+          # 确认下载的是一个gzip压缩包
+          file "${ASSET_NAME}"
           
-          # 2. 打印文件的前10行内容
-          echo "First 10 lines of the file:"
-          head -n 10 bee_linux_amd64
-          echo "--- END OF DIAGNOSIS ---"
+          # 【核心修正】解压缩.tar.gz文件
+          # tar命令会自动解压出名为 'bee' 的二进制文件
+          tar -xzf "${ASSET_NAME}"
           
-          # 只有当文件是可执行二进制文件时，才继续
-          if file bee_linux_amd64 | grep -q "ELF 64-bit LSB executable"; then
-            echo "File is a valid executable. Proceeding with installation."
-            sudo install -m 755 bee_linux_amd64 /usr/local/bin/bee
-            rm bee_linux_amd64
-          else
-            echo "Error: Downloaded file is not a valid executable!"
-            exit 1
-          fi
+          echo "--- Installing bee binary ---"
+          # 将解压出的'bee'文件安装到系统路径
+          sudo install -m 755 bee /usr/local/bin/bee
+          
+          # 清理工作
+          rm "${ASSET_NAME}" bee
 
       - name: 3. Verify bee installation
         run: bee version
@@ -67,7 +61,6 @@ jobs:
         run: ls -la bpf_program.o loader
       
       # ---- 后续的Docker打包和推送步骤 (保持不变) ----
-      
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -83,8 +76,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch,prefix=
+          tags: type=ref,event=branch,prefix=
       - name: Build and push final image
         uses: docker/build-push-action@v4
         with:
