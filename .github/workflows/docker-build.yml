@@ -1,4 +1,4 @@
-name: Build eBPF with Bumblebee and Push (Final Corrected)
+name: Build eBPF with Bumblebee and Push (API Fetch)
 
 on:
   push:
@@ -24,40 +24,40 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      - name: 2. Download, Extract and Install Bumblebee (bee)
+      - name: 2. Download Bumblebee Asset via GitHub API
+        # 【核心修正】使用经过验证的、通过API下载的Action
+        uses: jcbhmr/fetch-release-asset@v1
+        with:
+          # 仓库所有者和名称
+          owner: solo-io
+          repo: bumblebee
+          # Git Tag
+          tag: ${{ env.BEE_VERSION }}
+          # 准确的资产文件名
+          file: bee-linux-amd64.tar.gz
+          # 将下载的文件保存为...
+          target: ./bee-linux-amd64.tar.gz
+
+      - name: 3. Extract and Install Bumblebee
         run: |
           set -e
           set -x
-          
-          # 【核心修正】使用正确的资产名称 bee-linux-amd64.tar.gz
-          ASSET_NAME="bee-linux-amd64.tar.gz"
-          BEE_URL="https://github.com/solo-io/bumblebee/releases/download/${BEE_VERSION}/${ASSET_NAME}"
-          
-          echo "--- Downloading from correct URL: ${BEE_URL} ---"
-          curl -L -o "${ASSET_NAME}" "${BEE_URL}"
-          
           echo "--- Verifying downloaded file ---"
-          # 确认下载的是一个gzip压缩包
-          file "${ASSET_NAME}"
+          file bee-linux-amd64.tar.gz
           
-          # 【核心修正】解压缩.tar.gz文件
-          # tar命令会自动解压出名为 'bee' 的二进制文件
-          tar -xzf "${ASSET_NAME}"
+          echo "--- Extracting tarball ---"
+          tar -xzf bee-linux-amd64.tar.gz
           
           echo "--- Installing bee binary ---"
-          # 将解压出的'bee'文件安装到系统路径
           sudo install -m 755 bee /usr/local/bin/bee
-          
-          # 清理工作
-          rm "${ASSET_NAME}" bee
 
-      - name: 3. Verify bee installation
+      - name: 4. Verify bee installation
         run: bee version
 
-      - name: 4. Build eBPF program using bee
+      - name: 5. Build eBPF program using bee
         run: bee build bpf_program.c loader.c
 
-      - name: 5. Verify build artifacts
+      - name: 6. Verify build artifacts
         run: ls -la bpf_program.o loader
       
       # ---- 后续的Docker打包和推送步骤 (保持不变) ----
