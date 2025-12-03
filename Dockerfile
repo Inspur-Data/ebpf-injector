@@ -16,9 +16,18 @@ WORKDIR /src
 COPY bpf_program.c .
 COPY loader.c .
 
-# 3. 编译eBPF程序，并捕获详细错误日志
-# 如果编译失败，Action会中止，并打印出clang_error.log的内容
-RUN (clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o 2>&1 | tee clang_error.log; if [ ${PIPESTATUS[0]} -ne 0 ]; then cat clang_error.log; exit 1; fi)
+# 3. 【终极诊断】编译eBPF程序
+RUN \
+    # 步骤A: 打印当前目录内容，确认文件是否真的被拷贝进来了
+    echo "--- Listing current directory before compile ---" && \
+    ls -la && \
+    echo "--- Checking bpf_program.c content ---" && \
+    # 打印文件内容，确认文件不为空
+    cat bpf_program.c && \
+    echo "--- Starting clang compilation ---" && \
+    \
+    # 步骤B: 运行编译命令，并捕获详细日志
+    (clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o 2>&1 | tee clang_error.log; if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "--- CLANG FAILED, LOGS: ---"; cat clang_error.log; exit 1; fi)
 
 # 4. 编译用户态加载器
 RUN gcc -g -Wall loader.c -o loader -lbpf
