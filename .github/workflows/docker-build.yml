@@ -1,6 +1,5 @@
 name: Debug eBPF Compilation
 
-# 只允许手动触发
 on: [workflow_dispatch]
 
 jobs:
@@ -9,44 +8,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤1：检出您的代码
       - name: 1. Checkout repository
         uses: actions/checkout@v3
 
-      # 步骤2：安装所有必要的编译依赖
       - name: 2. Install Dependencies
         run: |
           sudo apt-get update
+          # 安装所有必要的编译依赖
           sudo apt-get install -y clang llvm libbpf-dev linux-headers-$(uname -r) build-essential gcc
 
-      # 步骤3：执行最终的、带有完整诊断的编译命令
-      - name: 3. Final Compile Attempt with Diagnostics
+      - name: 3. Final Compile Attempt (Kernel-Style)
         run: |
-          # --- 诊断部分 ---
+          # --- 诊断信息 ---
           echo "================ DIAGNOSTICS ================"
-          echo "1. Current User: $(whoami)"
-          echo "2. Current Directory (pwd): $(pwd)"
-          echo "3. GitHub Workspace Variable: ${{ github.workspace }}"
-          echo "4. Listing files in current directory:"
+          echo "1. Kernel Version: $(uname -r)"
+          echo "2. Clang Version: $(clang --version | head -n 1)"
+          echo "3. Workspace: $(pwd)"
+          echo "--- Listing files: ---"
           ls -la
-          echo "5. Listing files in workspace directory:"
-          ls -la ${{ github.workspace }}
           echo "==============================================="
           
-          # --- 编译部分 ---
+          # --- 【终极核心编译命令】 ---
           echo ""
-          echo "--- Starting eBPF compilation ---"
-          # 我们不再使用 working-directory，而是直接 cd 到 workspace
-          cd ${{ github.workspace }}
-
+          echo "--- Starting eBPF compilation (Kernel-Style) ---"
+          
+          # 这套参数是模仿内核make M=... scripts/Makefile.build的调用方式
+          # 它为clang提供了最完整的内核编译上下文
           clang \
             -O2 -g -Wall \
             -target bpf \
-            -I/usr/include/bpf \
+            -D__KERNEL__ \
+            -D__TARGET_ARCH_x86 \
             -I/usr/src/linux-headers-$(uname -r)/include \
+            -I/usr/src/linux-headers-$(uname -r)/arch/x86/include \
+            -I/usr/src/linux-headers-$(uname -r)/arch/x86/include/uapi \
+            -I/usr/src/linux-headers-$(uname -r)/include/uapi \
+            -I/usr/src/linux-headers-$(uname -r)/include/generated/uapi \
+            -I/usr/src/linux-headers-$(uname -r)/arch/x86/include/generated \
+            -include /usr/src/linux-headers-$(uname -r)/include/linux/kconfig.h \
+            -nostdinc \
+            -isystem /usr/lib/clang/$(clang -dumpversion)/include \
             -c bpf_program.c \
             -o bpf_program.o
-          
+
           echo "--- eBPF compilation finished. Exit code: $? ---"
           
           echo ""
@@ -58,5 +62,3 @@ jobs:
           echo ""
           echo "--- Final artifacts: ---"
           ls -la loader bpf_program.o
-
-          
