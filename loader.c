@@ -21,7 +21,6 @@ void parse_and_update_ports(struct bpf_map *map, char *ports_str) {
     }
     char *port_token = strtok(ports_str, ",");
     while (port_token != NULL) {
-        // ... (这部分端口解析逻辑和之前一样，无需修改) ...
         char *range_sep = strchr(port_token, '-');
         if (range_sep) {
             *range_sep = '\0';
@@ -74,7 +73,6 @@ int main(int argc, char **argv) {
         return 1;
     }
     
-    // 手动打开和加载eBPF .o 文件
     obj = bpf_object__open_file("bpf_program.o", NULL);
     if (libbpf_get_error(obj)) {
         fprintf(stderr, "ERROR: opening BPF object file failed\n");
@@ -86,7 +84,6 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
     
-    // 查找map和program
     map = bpf_object__find_map_by_name(obj, "ports_map");
     if (!map) {
         fprintf(stderr, "ERROR: finding map in BPF object failed\n");
@@ -99,7 +96,6 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
 
-    // 调用端口解析函数
     parse_and_update_ports(map, ports_str);
 
     DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook, .ifindex = ifindex, .attach_point = BPF_TC_INGRESS);

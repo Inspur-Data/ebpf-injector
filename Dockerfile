@@ -1,66 +1,46 @@
 # ---- Build Stage ----
-FROM ubuntu:22.04 AS builder
+# 使用一个标准的Ubuntu镜像作为构建环境
+FROM ubuntu:22.04 as builder
 
+# 1. 安装所有必需的编译依赖
+# - clang, llvm, libelf-dev, libbpf-dev: eBPF编译的核心工具
+# - linux-headers-generic: 提供通用的内核头文件，这是本次修改成功的关键！
+# - build-essential, git, make: 标准的构建工具
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
+    build-essential \
     clang \
     llvm \
     libelf-dev \
-    libelf1 \
     libbpf-dev \
-    linux-headers-generic \
-    linux-tools-generic \
-    build-essential \
     git \
-    pkg-config \
-    libzstd-dev && \
-    rm -rf /var/lib/apt/lists/*
+    make \
+    linux-headers-generic
 
-# Clone libbpf-bootstrap
-WORKDIR /tmp
-RUN git clone --depth 1 https://github.com/libbpf/libbpf-bootstrap.git
-WORKDIR /tmp/libbpf-bootstrap
-RUN git submodule update --init --recursive
+# 2. 拷贝源代码
+WORKDIR /src
+COPY bpf_program.c .
+COPY loader.c .
 
-# Copy source files to build directory
-COPY bpf_program.c /tmp/libbpf-bootstrap/src/
-COPY bpf_helpers.h /tmp/libbpf-bootstrap/src/
-COPY loader.c /tmp/libbpf-bootstrap/src/
+# 3. 编译eBPF程序 (.o文件)
+# 这是一个最经典、最基础的clang命令，不依赖任何动态生成的头文件
+RUN clang -O2 -g -target bpf -c bpf_program.c -o bpf_program.o
 
-# Generate vmlinux.h
-RUN ln -sf /usr/sbin/bpftool /usr/bin/bpftool
-RUN bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/vmlinux.h
+# 4. 编译用户态加载器
+RUN gcc -g -Wall loader.c -o loader -lbpf
 
-WORKDIR /tmp/libbpf-bootstrap/src
-
-# Compile eBPF program with all needed headers
-RUN clang -O2 -g -target bpf \
-    -I/tmp/libbpf-bootstrap/libbpf/src/uapi \
-    -I/tmp/libbpf-bootstrap/libbpf/src \
-    -I/tmp/libbpf-bootstrap/src \
-    -c bpf_program.c -o bpf_program.o && \
-    bpftool gen skeleton bpf_program.o > bpf_program.skel.h
-
-# Build libbpf library
-WORKDIR /tmp/libbpf-bootstrap/libbpf/src
-RUN make -j$(nproc)
-
-# Compile user-space loader
-WORKDIR /tmp/libbpf-bootstrap/src
-RUN gcc -g -Wall \
-    -I/tmp/libbpf-bootstrap/libbpf/src \
-    -I/tmp/libbpf-bootstrap/libbpf/src/uapi \
-    loader.c -o loader \
-    -L/tmp/libbpf-bootstrap/libbpf/src -lbpf -lelf -lz
 
 # ---- Final Stage ----
+# 创建一个最小的运行时镜像
 FROM ubuntu:22.04
 
-RUN apt-get update && \
-    apt-get install -y libbpf0 libelf1 && \
-    rm -rf /var/lib/apt/lists/*
+# 仅安装运行时必须的libbpf库
+RUN apt-get update && apt-get install -y libbpf-dev && rm -rf /var/lib/apt/lists/*
 
+# 从构建阶段拷贝最终的可执行文件和eBPF字节码
 WORKDIR /
-COPY --from=builder /tmp/libbpf-bootstrap/src/loader .
+COPY --from=builder /src/loader .
+COPY --from=builder /src/bpf_program.o . 
 
+# 设置默认入口点
 ENTRYPOINT ["/loader"]
