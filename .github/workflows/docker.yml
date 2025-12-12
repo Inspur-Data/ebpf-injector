@@ -14,11 +14,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+          # [关键更新] 安装编译 eBPF 所需的完整依赖
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-          wget git golang clang llvm curl pkg-config build-essential zlib1g-dev
+          wget git golang clang llvm curl pkg-config build-essential zlib1g-dev \
+          linux-headers-generic \
+          libbpf-dev
 
       - name: Build Go application
         run: make build
