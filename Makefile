@@ -8,7 +8,7 @@ BINARY_NAME = ebpf-injector
 # Docker 镜像标签
 DOCKER_IMAGE = registry.cn-hangzhou.aliyuncs.com/testwydimage/ebpf-injector:latest # GitHub Packages 镜像地址
 
-.PHONY: all build generate clean docker-build docker-push
+.PHONY: all build generate clean
 
 all: build
 
@@ -16,7 +16,7 @@ all: build
 build: generate
 	@echo "  > Building Go binary..."
 	# 从 cmd/injector 目录构建，并将输出放在项目根目录
-	cd cmd/injector && go build -o ../../$(BINARY_NAME) .
+	cd cmd/ringbuffer  && go build -o ../../$(BINARY_NAME) .
 
 # 导出环境变量并运行 go generate
 generate: export BPF_CLANG := $(CLANG)

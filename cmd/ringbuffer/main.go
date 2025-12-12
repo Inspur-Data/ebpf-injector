@@ -14,7 +14,7 @@ import (
 )
 
 // bpf2go 的指令，引用了 bpf/bpf_tcp_option_kern.c
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -cflags $BPF_CFLAGS bpf ../../bpf/bpf_tcp_option_kern.c -- -I/usr/include/bpf -O2 -g -Wall -Werror
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -cflags $BPF_CFLAGS bpf ../../bpf/bpf_tcp_option_kern.c -- -I/usr/include/bpf
 
 const (
 	// sockops 程序需要挂载到 cgroup v2 的根目录
