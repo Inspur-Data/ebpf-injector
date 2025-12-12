@@ -14,17 +14,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-          # [关键更新] 安装编译 eBPF 所需的完整依赖
+        # [关键更新 1] 安装更精确的依赖包
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
           wget git golang clang llvm curl pkg-config build-essential zlib1g-dev \
-          linux-headers-generic \
-          libbpf-dev
+          linux-libc-dev libbpf-dev
 
-      - name: Build Go application
-        run: make build
+        # [关键更新 2] 在编译时明确指定 CFLAGS
+        - name: Build Go application
+          env:
+            # 为 Clang 编译器强制指定头文件搜索路径，确保万无一失
+            BPF_CFLAGS: "-O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu"
+          run: make build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
