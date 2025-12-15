@@ -1,14 +1,15 @@
 package main
 
 import (
-	"fmt"
+	_ "fmt"
 	"log"
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
-	"strings"
 	"syscall"
+
+	"os/signal"
+	_ "strings"
 
 	"github.com/cilium/ebpf/rlimit"
 )
