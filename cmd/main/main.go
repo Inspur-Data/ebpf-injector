@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf/link"
@@ -12,7 +13,6 @@ import (
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
-
 func main() {
 	// 订阅停止信号
 	stopper := make(chan os.Signal, 1)
@@ -26,7 +26,7 @@ func main() {
 	// 加载 eBPF 对象
 	objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
-		log.Fatalf("loading objects: %v", err)
+		log.Fatalf("loading objects: %s", err)
 	}
 	defer objs.Close()
 
@@ -36,41 +36,53 @@ func main() {
 		log.Fatalf("failed to get network interfaces: %v", err)
 	}
 
-	var links []link.Link
-
-	// 将 TC 程序附加到所有物理网络接口
-	for _, iface := range ifaces {
-		// 忽略回环和虚拟接口
-		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+	// 遍历所有网络接口
+	for _, i := range ifaces {
+		// 忽略本地回环和虚拟接口
+		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 || strings.HasPrefix(i.Name, "veth") {
 			continue
 		}
 
-		// 附加到入口 (ingress) 流量
-		l, err := link.AttachTCX(link.TCXOptions{
-			Program:   objs.ToaInserter, // 函数名会从 bpf_tcp_option_kern.c 中的 toa_inserter 自动生成
-			Attach:    ebpf.AttachTCXIngress,
-			Interface: iface.Index,
+		// 为每个接口附加qdisc
+		qdisc := &link.TcQdisc{
+			ifindex: i.Index,
+			Handle:  0xffff,
+			Parent:  link.HANDLE_CLSACT,
+		}
+		if err := qdisc.Create(); err != nil {
+			log.Printf("failed to create qdisc on %s: %v", i.Name, err)
+			continue
+		}
+
+		// 附加eBPF程序到ingress (入口)
+		l, err := link.AttachTC(link.TCOptions{
+			Program:   objs.InjectTcp4opt, // 函数名来自 C 代码: inject_tcp4opt
+			Interface: i.Index,
+			Direction: link.TC_INGRESS,
 		})
 		if err != nil {
-			log.Printf("could not attach TC program to interface %q: %s", iface.Name, err)
-			continue // 继续尝试下一个接口
+			log.Fatalf("could not attach TC program to interface %q: %s", i.Name, err)
 		}
-		links = append(links, l)
-		log.Printf("Attached TC program to interface %q (index %d)", iface.Name, iface.Index)
+		defer l.Close()
+
+		// 附加eBPF程序到egress (出口)
+		l, err = link.AttachTC(link.TCOptions{
+			Program:   objs.InjectTcp4opt, // 同一个程序
+			Interface: i.Index,
+			Direction: link.TC_EGRESS,
+		})
+		if err != nil {
+			log.Fatalf("could not attach TC program to interface %q: %s", i.Name, err)
+		}
+		defer l.Close()
+
+
+		log.Printf("Attached TC program to interface %q", i.Name)
 	}
 
-	// 如果没有成功附加到任何接口，则退出
-	if len(links) == 0 {
-		log.Fatalf("Could not attach to any network interfaces")
-	}
+	log.Println("Successfully attached eBPF program. Press Ctrl-C to exit.")
 
-	defer func() {
-		for _, l := range links {
-			l.Close()
-		}
-	}()
-
-	log.Println("Successfully attached eBPF program. Press Ctrl-C to exit and detach.")
+	// 等待退出信号
 	<-stopper
-	log.Println("Exiting...")
+	log.Println("Received shutdown signal, exiting...")
 }

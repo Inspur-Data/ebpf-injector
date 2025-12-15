@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-          clang llvm libbpf-dev linux-libc-dev build-essential \
+          clang llvm libbpf-dev linux-libc-dev build-essential  iproute2\
           wget git golang clang llvm curl pkg-config build-essential zlib1g-dev
 
       - name: Download Go modules

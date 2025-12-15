@@ -1,6 +1,10 @@
 # 使用一个标准的 Linux 发行版作为基础镜像
 FROM ubuntu:22.04
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # 设置工作目录
 WORKDIR /app/
 
