@@ -8,8 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-
-	"github.com/cilium/ebpf/link"
+	
 	"github.com/cilium/ebpf/rlimit"
 )
 
