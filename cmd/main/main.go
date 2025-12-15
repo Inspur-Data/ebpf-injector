@@ -1,15 +1,16 @@
 package main
 
 import (
-	"github.com/cilium/ebpf/link"
+	_ "github.com/cilium/ebpf/link"
 	"log"
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
+
+	"os/signal"
+	_ "path/filepath"
+	"strings"
 
 	"github.com/cilium/ebpf/rlimit"
 )
