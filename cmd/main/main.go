@@ -1,7 +1,7 @@
-// 文件路径: cmd/main/main.go
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -9,78 +9,72 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/cilium/ebpf/rlimit"
 )
-
 // go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
-
 func main() {
-	log.Println("Starting eBPF TOA injector...")
-
-	// 订阅停止信号
+	// 订阅中断信号，用于优雅退出
 	stopper := make(chan os.Signal, 1)
 	signal.Notify(stopper, os.Interrupt, syscall.SIGTERM)
 
-	// 获取所有网络接口
-	ifaces, err := net.Interfaces()
+	// 提升 eBPF 程序的内存锁定限制
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatalf("Failed to remove memlock limit: %v", err)
+	}
+
+	// 1. 查找我们想要操作的特定网络接口'ens192'
+	ifaceName := "ens192"
+	_, err := net.InterfaceByName(ifaceName)
 	if err != nil {
-		log.Fatalf("Failed to get network interfaces: %v", err)
+		log.Fatalf("Lookup for network interface %s failed: %s", ifaceName, err)
 	}
 
-	var attachedInterfaces []string
+	// 2. 清理旧的 qdisc (如果存在)，确保环境干净
+	// 这使得脚本可以被多次重复运行而不会出错
+	exec.Command("tc", "qdisc", "del", "dev", ifaceName, "clsact").Run()
+	log.Printf("Cleaned up existing qdisc on %s (if any)", ifaceName)
 
-	// 遍历所有网络接口
-	for _, iface := range ifaces {
-		// 忽略 loopback、down状态的接口，以及常见的虚拟网卡
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "veth") || strings.HasPrefix(iface.Name, "docker") {
-			continue
-		}
-
-		log.Printf("Attempting to attach to interface %s...", iface.Name)
-
-		// 1. 清理旧的 qdisc (如果存在)，确保环境干净
-		exec.Command("tc", "qdisc", "del", "dev", iface.Name, "clsact").Run()
-
-		// 2. 添加 clsact qdisc (这是挂载TC BPF程序的先决条件)
-		cmdAddQdisc := exec.Command("tc", "qdisc", "add", "dev", iface.Name, "clsact")
-		if out, err := cmdAddQdisc.CombinedOutput(); err != nil {
-			log.Printf("Failed to add qdisc to interface %s: %v. Output: %s", iface.Name, err, string(out))
-			continue
-		}
-
-		// 3. 附加 BPF 程序到 egress hook (出向流量)
-		//    我们直接使用 bpf2go 生成的 .o 文件
-		cmdAttachEgress := exec.Command("tc", "filter", "add", "dev", iface.Name, "egress", "bpf", "direct-action", "object-file", "bpf.o", "section", "tc")
-		if out, err := cmdAttachEgress.CombinedOutput(); err != nil {
-			log.Printf("Failed to attach BPF program to egress on %s: %v. Output: %s", iface.Name, err, string(out))
-			// 清理 qdisc
-			exec.Command("tc", "qdisc", "del", "dev", iface.Name, "clsact").Run()
-			continue
-		}
-
-		log.Printf("Successfully attached TC program to egress of interface %q", iface.Name)
-		attachedInterfaces = append(attachedInterfaces, iface.Name)
+	// 3. 为接口 'ens192' 添加 clsact qdisc
+	// 这是挂载 TC (Traffic Control) BPF 程序的先决条件
+	cmdAddQdisc := exec.Command("tc", "qdisc", "add", "dev", ifaceName, "clsact")
+	if out, err := cmdAddQdisc.CombinedOutput(); err != nil {
+		log.Fatalf("Failed to add qdisc to interface %s: %v\nOutput: %s", ifaceName, err, string(out))
 	}
+	log.Printf("Added clsact qdisc to interface %s", ifaceName)
 
-	if len(attachedInterfaces) == 0 {
-		log.Fatalf("Could not attach to any suitable network interfaces. Please ensure you are running as root or with CAP_NET_ADMIN capabilities.")
-	}
-
-	// 捕获退出信号，以便执行清理操作
-	go func() {
-		<-stopper
-		log.Println("Received shutdown signal, cleaning up and exiting...")
-
-		// 程序退出时，清理所有附加的 TC 规则和 qdisc
-		for _, ifaceName := range attachedInterfaces {
-			log.Printf("Detaching from interface %s", ifaceName)
-			// 删除 qdisc 会自动删除附加在上面的所有 filter
-			if err := exec.Command("tc", "qdisc", "del", "dev", ifaceName, "clsact").Run(); err != nil {
-				log.Printf("Failed to delete qdisc on %s: %v", ifaceName, err)
-			}
+	// defer 语句确保在程序退出时，无论何种原因，都会执行清理操作
+	defer func() {
+		log.Printf("Detaching TC filter and qdisc from %s", ifaceName)
+		if err := exec.Command("tc", "qdisc", "del", "dev", ifaceName, "clsact").Run(); err != nil {
+			log.Printf("Failed to delete qdisc on %s: %v", ifaceName, err)
 		}
-		os.Exit(0)
 	}()
 
-	// 阻塞主goroutine，让程序持续运行
-	select {}
+	// 4. 附加 eBPF 程序到 egress (出口) hook
+	// 我们直接使用 bpf2go 生成的 .o 文件，bpf2go 会根据你的系统架构选择
+	// 'bpf_bpfel.o' (Little Endian) 或 'bpf_bpfeb.o' (Big Endian)
+	// 我们在这里直接指定 bpfel.o，因为 x86_64 是小端架构
+	objFileName := "bpf_bpfel.o"
+
+	// 'bpf2go' 在 'go generate' 期间已经将 C 代码编译成了这个 .o 文件
+	// 我们的 Makefile 确保了这个 .o 文件和 Go 可执行文件都在容器的 /app 目录下
+	cmdAttachEgress := exec.Command("tc", "filter", "add", "dev", ifaceName, "egress", "bpf", "direct-action", "object-file", objFileName, "section", "tc")
+
+	// [重要] 设置命令的执行目录
+	// 假设 Dockerfile 将 ebpf-injector 和 bpf_bpfel.o 都放在了 /app/ 目录
+	// 如果不设置，它可能会在 / 目录下执行，从而找不到 bpf_bpfel.o
+	cmdAttachEgress.Dir = "/app" // 或者是你 Dockerfile 中设置的 WORKDIR
+
+	if out, err := cmdAttachEgress.CombinedOutput(); err != nil {
+		log.Fatalf("Failed to attach BPF program to egress on %s: %v\nOutput: %s", ifaceName, err, string(out))
+	}
+
+	log.Printf("Successfully attached TC program to egress of interface %q", ifaceName)
+	log.Println("eBPF injector is running. Press Ctrl-C to exit and clean up.")
+
+	// 等待程序被终止的信号 (例如 Ctrl+C)
+	<-stopper
+
+	log.Println("Received shutdown signal, cleaning up and exiting.")
 }
