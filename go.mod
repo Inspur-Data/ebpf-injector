@@ -1,6 +1,7 @@
-module github.com/eunomia-bpf/cilium-ebpf-starter-template
+module ebpf-injector
 
-go 1.21.0
+go 1.24.0
 
-require github.com/cilium/ebpf v0.14.0 // 或者是其他高于 v0.13.0 的版本
+require github.com/cilium/ebpf v0.20.0
 
+require golang.org/x/sys v0.37.0 // indirect
