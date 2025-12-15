@@ -1,29 +1,35 @@
-# Makefile
-
 # 最终生成的二进制文件名
 BINARY_NAME = ebpf-injector
+# Docker 镜像标签
+DOCKER_IMAGE = registry.cn-hangzhou.aliyuncs.com/testwydimage/ebpf-injector:latest
 
-.PHONY: all build generate clean
+.PHONY: all build generate clean docker-build docker-push
 
 all: build
 
 # 编译 Go 应用程序
 build: generate
 	@echo "  > Building Go binary..."
-	# [最终核心修正]
-	# 我们完全模仿模板的构建方式：
-	# 1. 'cd' 进入 main.go 所在的目录。
-	# 2. 在那里运行 'go build'。
-	# 3. 将编译好的二进制文件输出到项目的根目录。
-	cd cmd/ringbuffer && go build -o ../../$(BINARY_NAME) .
+	# [修正] 路径已从 ringbuffer 改为 main
+	cd cmd/main && go build -o ../../$(BINARY_NAME) .
 
 # generate 目标现在极其简单，直接调用 go generate ./...
 generate:
 	@echo "  > Generating eBPF Go assets..."
 	go generate ./...
 
+# 构建 Docker 镜像
+docker-build: build
+	@echo "  > Building Docker image..."
+	docker build -t $(DOCKER_IMAGE) .
+
+# 推送 Docker 镜像
+docker-push: docker-build
+	@echo "  > Pushing Docker image..."
+	docker push $(DOCKER_IMAGE)
+
 # 清理生成的文件
 clean:
 	@echo "  > Cleaning up..."
-	# 删除根目录的二进制文件，以及在 cmd/ringbuffer 目录下生成的 Go 文件。
-	rm -f $(BINARY_NAME) ./cmd/ringbuffer/bpf_*.go
+	# [修正] 路径已从 ringbuffer 改为 main
+	rm -f $(BINARY_NAME) ./cmd/main/bpf_*.go
