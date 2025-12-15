@@ -23,7 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// 加载 eBPF 对象
+	// 加载 eBPF 对象 (这些函数由 go generate 自动创建在同一个包中)
 	objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
 		log.Fatalf("loading objects: %s", err)
@@ -36,53 +36,69 @@ func main() {
 		log.Fatalf("failed to get network interfaces: %v", err)
 	}
 
+	var links []link.Link
+
 	// 遍历所有网络接口
 	for _, i := range ifaces {
-		// 忽略本地回环和虚拟接口
+		// 忽略 loopback 和没有启动的接口
 		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 || strings.HasPrefix(i.Name, "veth") {
 			continue
 		}
 
-		// 为每个接口附加qdisc
+		// 为每个接口附加一个 clsact qdisc (排队规则)
+		// 这是挂载 TC 类型 eBPF 程序的先决条件
 		qdisc := &link.TcQdisc{
 			ifindex: i.Index,
-			Handle:  0xffff,
+			Handle:  link.MakeHandle(0xffff, 0),
 			Parent:  link.HANDLE_CLSACT,
 		}
 		if err := qdisc.Create(); err != nil {
-			log.Printf("failed to create qdisc on %s: %v", i.Name, err)
+			log.Printf("could not create qdisc on interface %s: %v.", i.Name, err)
 			continue
 		}
+		defer qdisc.Close() // 确保qdisc在程序退出时被清理
 
-		// 附加eBPF程序到ingress (入口)
-		l, err := link.AttachTC(link.TCOptions{
-			Program:   objs.InjectTcp4opt, // 函数名来自 C 代码: inject_tcp4opt
+		// 附加 eBPF 程序到 ingress (入口) 流量
+		// 注意：C 文件中的函数名 inject_tcp4opt 会被 bpf2go 转换为 BpfInjectTcp4opt
+		ingress, err := link.AttachTCX(link.TCXOptions{
+			Program:   objs.BpfProgs.InjectTcp4opt,
+			Attach:    ebpf.AttachTCXIngress,
 			Interface: i.Index,
-			Direction: link.TC_INGRESS,
 		})
 		if err != nil {
-			log.Fatalf("could not attach TC program to interface %q: %s", i.Name, err)
+			log.Fatalf("could not attach TC program to ingress on interface %q: %s", i.Name, err)
 		}
-		defer l.Close()
+		links = append(links, ingress) // 添加到列表以便稍后清理
 
-		// 附加eBPF程序到egress (出口)
-		l, err = link.AttachTC(link.TCOptions{
-			Program:   objs.InjectTcp4opt, // 同一个程序
+		// 附加 eBPF 程序到 egress (出口) 流量
+		egress, err := link.AttachTCX(link.TCXOptions{
+			Program:   objs.BpfProgs.InjectTcp4opt, // 同一个程序
+			Attach:    ebpf.AttachTCXEgress,
 			Interface: i.Index,
-			Direction: link.TC_EGRESS,
 		})
 		if err != nil {
-			log.Fatalf("could not attach TC program to interface %q: %s", i.Name, err)
+			log.Fatalf("could not attach TC program to egress on interface %q: %s", i.Name, err)
 		}
-		defer l.Close()
+		links = append(links, egress) // 添加到列表以便稍后清理
 
-
-		log.Printf("Attached TC program to interface %q", i.Name)
+		log.Printf("Attached TC program to interface %q (index %d)", i.Name, i.Index)
 	}
 
-	log.Println("Successfully attached eBPF program. Press Ctrl-C to exit.")
+	// 如果没有成功附加到任何接口，则报错退出
+	if len(links) == 0 {
+		log.Fatalf("Could not attach to any network interfaces")
+	}
 
-	// 等待退出信号
+	// 在程序退出时，确保所有 BPF 链接都被正确关闭
+	defer func() {
+		for _, l := range links {
+			if err := l.Close(); err != nil {
+				log.Printf("error closing link: %v", err)
+			}
+		}
+	}()
+
+	log.Println("Successfully attached eBPF programs. Press Ctrl-C to exit and detach.")
 	<-stopper
-	log.Println("Received shutdown signal, exiting...")
+	log.Println("Received shutdown signal, detaching programs and exiting.")
 }
