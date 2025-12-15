@@ -25,8 +25,10 @@ jobs:
           clang llvm libbpf-dev linux-libc-dev build-essential \
           wget git golang clang llvm curl pkg-config build-essential zlib1g-dev
 
+      - name: Download Go modules
+        run: go mod tidy
 
-        # [关键更新 2] 在编译时明确指定 CFLAGS
+          # [关键更新 2] 在编译时明确指定 CFLAGS
       - name: Build Go application
         run: make build
 
