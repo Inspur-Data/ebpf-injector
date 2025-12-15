@@ -1,9 +1,5 @@
-// 文件名: bpf/bpf_tcp_option_kern.c
 
-// 开启内核追踪 (用于调试)
-// echo 1 > /sys/kernel/tracing/tracing_on
-// 查看追踪输出
-// cat /sys/kernel/tracing/trace_pipe
+//go:build ignore
 
 #include <linux/bpf.h>
 #include <linux/types.h>
@@ -12,7 +8,7 @@
 #include <linux/in6.h>
 
 // [关键] go:generate 指令，用于自动从 C 代码生成 Go 代码
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go bpf bpf_tcp_option_kern.c -- -I/usr/include/bpf -O2 -g -Wall -Werror
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
 
 int _version SEC("version") = 1;
 
