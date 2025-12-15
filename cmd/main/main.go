@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	
+
 	"github.com/cilium/ebpf/rlimit"
 )
 
@@ -45,7 +45,7 @@ func main() {
 	// 遍历并附加到每个合适的接口
 	for _, iface := range ifaces {
 		// 忽略 loopback 和没有启动的接口
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "veth") || strings.HasPrefix(i.Name, "docker") {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "veth") || strings.HasPrefix(iface.Name, "docker") {
 			continue
 		}
 
