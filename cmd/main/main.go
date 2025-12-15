@@ -43,6 +43,9 @@ func main() {
 
 	// 遍历所有网络接口
 	for _, iface := range ifaces {
+		if iface.Name != "ens192"{
+			continue
+		}
 		// 忽略 loopback、down状态的接口，以及常见的虚拟网卡（如 veth, docker0）
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "veth") || strings.HasPrefix(iface.Name, "docker") {
 			continue
