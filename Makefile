@@ -26,4 +26,4 @@ generate:
 # 清理生成的文件
 clean:
 	@echo "  > Cleaning up..."
-	rm -f $(BINARY_NAME) ./bpf/bpf_bpfel.go ./bpf/bpf_bpfeb.go
+	rm -f $(BINARY_NAME) ./cmd/ringbuffer/bpf_*.go

@@ -6,14 +6,19 @@ import (
 	"os/signal"
 	"syscall"
 
-	"ebpf-injector/bpf" // 导入由 bpf2go 生成的包
-
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 )
 
-// bpf2go 的指令，引用了 bpf/bpf_tcp_option_kern.c
+// [最终核心修正]
+// 由于 bpf_tcp_option_kern.c 和 main.go 现在位于同一个目录，go:generate 指令变得极其简单。
+//
+// 1. bpf:                  我们告诉 bpf2go，生成的 Go 变量和类型都以 "bpf" 作为前缀。
+// 2. bpf_tcp_option_kern.c: 直接引用同目录下的 C 文件名。
+// 3. -- -I...:             提供了所有正确的 clang 编译标志，一次性解决了所有头文件找不到的问题。
+//
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
 
 const (
 	// sockops 程序需要挂载到 cgroup v2 的根目录
