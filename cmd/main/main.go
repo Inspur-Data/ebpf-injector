@@ -21,10 +21,11 @@ func main() {
 
 	// 移除内存锁定限制
 	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to remove memlock limit:", err)
 	}
 
-	// 加载 eBPF 对象 (这些函数由 go generate 自动创建在同一个包中)
+	// 加载 eBPF 对象 (这些函数由 go:generate 自动创建在同一个包中)
+	// 这个结构是 bpf2go 默认生成的
 	objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
 		log.Fatalf("loading objects: %s", err)
@@ -46,43 +47,27 @@ func main() {
 			continue
 		}
 
-		// 为每个接口附加一个 clsact qdisc (排队规则)
-		// 这是挂载 TC 类型 eBPF 程序的先决条件
-		qdisc := &link.TcQdisc{
-			ifindex: i.Index,
-			Handle:  link.MakeHandle(0xffff, 0),
-			Parent:  link.HANDLE_CLSACT,
-		}
-		if err := qdisc.Create(); err != nil {
-			log.Printf("could not create qdisc on interface %s: %v.", i.Name, err)
-			continue
+		// 附加 TC qdisc (排队规则)
+		// 这是挂载 TC BPF 程序的先决条件
+		qdisc, err := link.AttachNewNetem(link.NetworkInterface{Index: i.Index})
+		if err != nil {
+			log.Fatalf("could not attach TCNETEM qdisc to interface %s: %v", i.Name, err)
 		}
 		defer qdisc.Close() // 确保qdisc在程序退出时被清理
 
-		// 附加 eBPF 程序到 ingress (入口) 流量
-		// 注意：C 文件中的函数名 inject_tcp4opt 会被 bpf2go 转换为 BpfInjectTcp4opt
-		ingress, err := link.AttachTCX(link.TCXOptions{
-			Program:   objs.BpfProgs.InjectTcp4opt,
-			Attach:    ebpf.AttachTCXIngress,
-			Interface: i.Index,
-		})
-		if err != nil {
-			log.Fatalf("could not attach TC program to ingress on interface %q: %s", i.Name, err)
-		}
-		links = append(links, ingress) // 添加到列表以便稍后清理
-
 		// 附加 eBPF 程序到 egress (出口) 流量
-		egress, err := link.AttachTCX(link.TCXOptions{
-			Program:   objs.BpfProgs.InjectTcp4opt, // 同一个程序
-			Attach:    ebpf.AttachTCXEgress,
+		// 注意：C 文件中的函数名 inject_tcp4opt 会被 bpf2go 自动转换为 BpfInjectTcp4opt
+		l, err := link.AttachTC(link.TCOptions{
+			Program:   objs.InjectTcp4opt, // 修正：直接访问 objs.InjectTcp4opt
 			Interface: i.Index,
+			Attach:    link.TCEgress, // 附加到出口
 		})
 		if err != nil {
 			log.Fatalf("could not attach TC program to egress on interface %q: %s", i.Name, err)
 		}
-		links = append(links, egress) // 添加到列表以便稍后清理
+		links = append(links, l) // 添加到列表以便稍后清理
 
-		log.Printf("Attached TC program to interface %q (index %d)", i.Name, i.Index)
+		log.Printf("Attached TC program to egress of interface %q (index %d)", i.Name, i.Index)
 	}
 
 	// 如果没有成功附加到任何接口，则报错退出
