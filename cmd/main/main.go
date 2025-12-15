@@ -46,7 +46,7 @@ func main() {
 	// 遍历并附加到每个合适的接口
 	for _, iface := range ifaces {
 		// 忽略 loopback 和没有启动的接口
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(i.Name, "veth") || strings.HasPrefix(i.Name, "docker") {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || strings.HasPrefix(iface.Name, "veth") || strings.HasPrefix(i.Name, "docker") {
 			continue
 		}
 
@@ -100,7 +100,7 @@ func main() {
 			if err := exec.Command("tc", "qdisc", "del", "dev", ifaceName, "clsact").Run(); err != nil {
 				log.Printf("Failed to delete qdisc on %s: %v", ifaceName, err)
 			}
-		}(i.Name)
+		}(iface.Name)
 	}
 
 	log.Println("eBPF injector is running. Press Ctrl-C to exit.")
