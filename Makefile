@@ -20,7 +20,8 @@ generate:
 	cd cmd/main && go generate ./...
 	@echo "  > Moving $(BPF_OBJECT) to root directory..."
     # 【关键修改】将 .o 文件移动到根目录
-    mv $(SRC_DIR)/$(BPF_OBJECT) .
+    cd cmd/main && ll -lsr
+    mv cmd/main/$(BPF_OBJECT) .
     cd cmd/main && ll -lsr
 
 # 构建 Docker 镜像
