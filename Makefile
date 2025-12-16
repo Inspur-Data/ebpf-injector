@@ -27,6 +27,7 @@ generate:
 
 	@echo "==> 3. Moving $(BPF_OBJECT) to root directory..."
 	cp cmd/main/$(BPF_OBJECT) .
+	cp cmd/main/bpf_bpfeb.o .
 
 	@echo "==> 4. Files in root directory and cmd/main AFTER move:"
 	ls -l
