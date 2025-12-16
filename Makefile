@@ -11,7 +11,6 @@ all: build
 # 编译 Go 应用程序
 build: generate
 	@echo "  > Building Go binary..."
-	# [修正] 路径已从 ringbuffer 改为 main
 	cd cmd/main && go build -o ../../$(BINARY_NAME) .
 
 # generate 目标现在极其简单，直接调用 go generate ./...
@@ -19,7 +18,6 @@ generate:
 	@echo "  > Generating eBPF Go assets..."
 	cd cmd/main && go generate ./...
 	@echo "  > Moving $(BPF_OBJECT) to root directory..."
-    # 【关键修改】将 .o 文件移动到根目录
     cd cmd/main && ll -lsr
     mv cmd/main/$(BPF_OBJECT) .
     cd cmd/main && ll -lsr
