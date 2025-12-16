@@ -14,7 +14,7 @@ import (
 
 	"github.com/cilium/ebpf/rlimit"
 )
-// go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
+// go:generate go run github.com/cilium/ebpf/cmd/bpf2go -v -cc clang bpf bpf_tcp_option_kern.c -- -O2 -g -Wall -Werror -I/usr/include/x86_64-linux-gnu -I/usr/include
 func main() {
 	log.Println("Starting eBPF injector...")
 

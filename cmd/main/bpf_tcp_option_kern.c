@@ -11,7 +11,7 @@
 #include <stddef.h>
 
 char __license[] SEC("license") = "GPL";
-int _version SEC("version") = 1;
+
 
 // 自定义TCP选项
 struct toa_data {
