@@ -26,7 +26,7 @@ generate:
 	ls -l cmd/main
 
 	@echo "==> 3. Moving $(BPF_OBJECT) to root directory..."
-	mv cmd/main/$(BPF_OBJECT) .
+	cp cmd/main/$(BPF_OBJECT) .
 
 	@echo "==> 4. Files in root directory and cmd/main AFTER move:"
 	ls -l
