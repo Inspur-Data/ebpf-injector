@@ -13,14 +13,27 @@ build: generate
 	@echo "  > Building Go binary..."
 	cd cmd/main && go build -o ../../$(BINARY_NAME) .
 
-# generate 目标现在极其简单，直接调用 go generate ./...
+# generate 目标:
+# 1. 在正确的目录下运行 go generate
+# 2. (调试) 显示生成后的文件
+# 3. 将生成的 .o 文件移动到项目根目录
+# 4. (调试) 确认文件已被移走
 generate:
-    @echo "  > Generating eBPF Go assets..."
-    cd cmd/main && go generate ./...
-    @echo "  > Moving $(BPF_OBJECT) to root directory..."
-    cd cmd/main && ll -lsr
-    mv cmd/main/$(BPF_OBJECT) .
-    cd cmd/main && ll -lsr
+	@echo "==> 1. Generating eBPF assets in cmd/main..."
+	cd cmd/main && go generate ./...
+
+	@echo "==> 2. Files in cmd/main AFTER generation:"
+	ls -l cmd/main
+
+	@echo "==> 3. Moving $(BPF_OBJECT) to root directory..."
+	mv cmd/main/$(BPF_OBJECT) .
+
+	@echo "==> 4. Files in root directory and cmd/main AFTER move:"
+	ls -l
+	@echo "---"
+	ls -l cmd/main
+
+
 
 # 构建 Docker 镜像
 docker-build: build
