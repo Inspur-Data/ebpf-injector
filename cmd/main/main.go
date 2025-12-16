@@ -44,7 +44,7 @@ func main() {
 
 	// 遍历所有网络接口
 	for _, iface := range ifaces {
-		if iface.Name != "ens192"{
+		if iface.Name != "ens192" && iface.Name != "ens16" {
 			continue
 		}
 		// 忽略 loopback、down状态的接口，以及常见的虚拟网卡（如 veth, docker0）

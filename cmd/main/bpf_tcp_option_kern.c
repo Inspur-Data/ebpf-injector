@@ -12,7 +12,6 @@
 
 char __license[] SEC("license") = "GPL";
 
-
 // 自定义TCP选项
 struct toa_data {
     __u8 kind;
@@ -75,6 +74,9 @@ int inject_tcp_option(struct __sk_buff *skb) {
         return TC_ACT_OK;
     }
 
+    // --- 关键修正区域 START ---
+    // 在 bpf_skb_adjust_room 之后, 必须重新加载所有指针和长度
+
     data_end = (void *)(long)skb->data_end;
     data     = (void *)(long)skb->data;
     eth      = data;
@@ -83,8 +85,16 @@ int inject_tcp_option(struct __sk_buff *skb) {
     iph      = data + sizeof(*eth);
     if ((void *)iph + sizeof(*iph) > data_end) return TC_ACT_OK;
 
+    // 【【【 核心修正 】】】
+    // 必须重新计算 ip_hdr_len，因为 iph 指针已经被重新加载
+    ip_hdr_len = iph->ihl * 4;
+    if (ip_hdr_len < sizeof(*iph)) {
+        return TC_ACT_OK;
+    }
+
     tcph     = (void *)iph + ip_hdr_len;
     if ((void *)tcph + sizeof(*tcph) > data_end) return TC_ACT_OK;
+    // --- 关键修正区域 END ---
 
     struct toa_data opt;
     opt.kind = 254;
@@ -98,6 +108,8 @@ int inject_tcp_option(struct __sk_buff *skb) {
 
     __u8 new_doff = tcph->doff + (sizeof(struct toa_data) / 4);
 
+    // 注意: bpf_l3_csum_replace 和 bpf_skb_store_bytes 已经隐式处理了 tot_len,
+    // 但为了代码清晰和可移植性，我们手动更新
     __be16 new_tot_len = bpf_htons(bpf_ntohs(old_tot_len) + sizeof(struct toa_data));
     bpf_l3_csum_replace(skb, sizeof(*eth) + offsetof(struct iphdr, check), old_tot_len, new_tot_len, sizeof(__u16));
     bpf_skb_store_bytes(skb, sizeof(*eth) + offsetof(struct iphdr, tot_len), &new_tot_len, sizeof(new_tot_len), 0);
