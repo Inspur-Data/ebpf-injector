@@ -12,6 +12,6 @@ WORKDIR /app
 
 # 从构建上下文中只复制编译好的Go应用程序二进制文件
 COPY ebpf-injector /app/ebpf-injector
-
+COPY cmd/main/bpf_bpfel.o /app/bpf_bpfel.o
 # 设置容器的启动命令
 ENTRYPOINT ["/app/ebpf-injector"]
