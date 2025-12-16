@@ -15,9 +15,9 @@ build: generate
 
 # generate 目标现在极其简单，直接调用 go generate ./...
 generate:
-	@echo "  > Generating eBPF Go assets..."
-	cd cmd/main && go generate ./...
-	@echo "  > Moving $(BPF_OBJECT) to root directory..."
+    @echo "  > Generating eBPF Go assets..."
+    cd cmd/main && go generate ./...
+    @echo "  > Moving $(BPF_OBJECT) to root directory..."
     cd cmd/main && ll -lsr
     mv cmd/main/$(BPF_OBJECT) .
     cd cmd/main && ll -lsr
