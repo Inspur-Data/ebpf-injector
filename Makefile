@@ -2,7 +2,8 @@
 BINARY_NAME = ebpf-injector
 # Docker 镜像标签
 DOCKER_IMAGE = registry.cn-hangzhou.aliyuncs.com/testwydimage/ebpf-injector:latest
-
+# eBPF 对象文件的名称
+BPF_OBJECT = bpf_bpfel.o
 .PHONY: all build generate clean docker-build docker-push
 
 all: build
@@ -17,6 +18,10 @@ build: generate
 generate:
 	@echo "  > Generating eBPF Go assets..."
 	cd cmd/main && go generate ./...
+	@echo "  > Moving $(BPF_OBJECT) to root directory..."
+    # 【关键修改】将 .o 文件移动到根目录
+    mv $(SRC_DIR)/$(BPF_OBJECT) .
+    cd cmd/main && ll -lsr
 
 # 构建 Docker 镜像
 docker-build: build
