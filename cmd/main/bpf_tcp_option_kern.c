@@ -48,34 +48,31 @@ int inject_tcp_option(struct __sk_buff *skb) {
     if (old_tcp_hdr_len < sizeof(*tcph)) return TC_ACT_OK;
     if (old_tcp_hdr_len + sizeof(struct toa_data) > 60) return TC_ACT_OK;
 
-    // --- 2. 【读取阶段】读取所有需要的值到局部变量 ---
+    // --- 2. 【读取阶段】---
     const __u16 source_port = tcph->source;
     const __u32 source_ip   = iph->saddr;
     const __be16 old_tot_len_be = iph->tot_len;
 
-    // 【【 核心修正：安全地读取位域 】】
     const int doff_flags_offset = sizeof(*eth) + ip_hdr_len + 12;
     __be16 old_doff_flags_word_be;
     if (bpf_skb_load_bytes(skb, doff_flags_offset, &old_doff_flags_word_be, sizeof(old_doff_flags_word_be)) < 0) {
         return TC_ACT_OK;
     }
 
-    // --- 3. 【计算阶段】在局部变量中计算所有新值 ---
+    // --- 3. 【计算阶段】---
     const __u16 old_doff_flags_word_host = bpf_ntohs(old_doff_flags_word_be);
     const __u8 old_doff_val = (old_doff_flags_word_host >> 12);
     const __u8 new_doff_val = old_doff_val + (sizeof(struct toa_data) / 4);
-
     const __u16 new_doff_flags_word_host = (old_doff_flags_word_host & 0x0FFF) | (new_doff_val << 12);
     const __be16 new_doff_flags_word_be = bpf_htons(new_doff_flags_word_host);
     const __be16 new_tot_len_be = bpf_htons(bpf_ntohs(old_tot_len_be) + sizeof(struct toa_data));
 
-    // --- 4. 【写入阶段】开始修改数据包 ---
-    // a. 扩展 SKB 空间
+    // --- 4. 【写入阶段】---
     if (bpf_skb_adjust_room(skb, sizeof(struct toa_data), BPF_ADJ_ROOM_NET, 0) < 0) {
         return TC_ACT_OK;
     }
 
-    // b. 【【 关键 】】在 adjust_room 后, 必须重新加载所有指针
+    // --- 重新加载所有指针 ---
     data_end = (void *)(long)skb->data_end;
     data     = (void *)(long)skb->data;
     eth      = data;
@@ -85,19 +82,18 @@ int inject_tcp_option(struct __sk_buff *skb) {
     __u32 new_ip_hdr_len = iph->ihl * 4;
     if (new_ip_hdr_len < sizeof(*iph)) return TC_ACT_OK;
 
-    // c. 写入新的 TCP 选项
+    // a. 写入新的 TCP 选项
     struct toa_data opt = { .kind = 254, .len = sizeof(opt), .port = source_port, .ip = source_ip };
     if (bpf_skb_store_bytes(skb, sizeof(*eth) + new_ip_hdr_len + old_tcp_hdr_len, &opt, sizeof(opt), 0) < 0) {
         return TC_ACT_OK;
     }
 
-    // d. 更新 IP 总长度，并修复 L3 (IP) 校验和
-    bpf_l3_csum_replace(skb, sizeof(*eth) + offsetof(struct iphdr, check), old_tot_len_be, new_tot_len_be, sizeof(new_tot_len_be));
-    bpf_skb_store_bytes(skb, sizeof(*eth) + offsetof(struct iphdr, tot_len), &new_tot_len_be, sizeof(new_tot_len_be), 0);
+    // b. 更新 IP 总长度 (L3)
+    if (bpf_skb_store_bytes(skb, sizeof(*eth) + offsetof(struct iphdr, tot_len), &new_tot_len_be, sizeof(new_tot_len_be), 0) < 0) {
+        return TC_ACT_OK;
+    }
 
-    // e. 【【 核心修正：安全地写回位域并修复 L4 (TCP) 校验和 】】
-    //    使用 BPF_F_RECOMPUTE_CSUM 标志，让内核在写入后自动修复 TCP 校验和。
-    //    这是处理此类问题的最安全、最高级的方法。
+    // c. 更新 TCP 数据偏移 (L4), 并请求内核重算 TCP 校验和
     if (bpf_skb_store_bytes(skb, sizeof(*eth) + new_ip_hdr_len + 12, &new_doff_flags_word_be, sizeof(new_doff_flags_word_be), BPF_F_RECOMPUTE_CSUM) < 0) {
         return TC_ACT_OK;
     }
